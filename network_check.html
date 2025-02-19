@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>话本小说网络检测</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            text-align: center;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+        .loading {
+            margin: 10px 0;
+        }
+        .details {
+            font-size: 14px;
+            color: #666;
+            margin: 10px;
+            padding: 10px;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            text-align: left;
+        }
+        .network-quality {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #e8f5e9;
+            border-radius: 4px;
+        }
+        .quality-good {
+            color: #2e7d32;
+        }
+        .quality-medium {
+            color: #f57f17;
+        }
+        .quality-poor {
+            color: #c62828;
+        }
+        .test-details {
+            max-height: 200px;
+            overflow-y: auto;
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .test-item {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .test-success {
+            color: #2e7d32;
+        }
+        .test-error {
+            color: #c62828;
+        }
+        .statistics {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #e3f2fd;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>话本小说网络检测工具</h1>
+    <div id="loading" class="loading">检测中...</div>
+    <div id="networkStatus"></div>
+    <div id="networkDetails" class="details"></div>
+    <div id="networkQuality" class="network-quality"></div>
+    <div id="huabenStatus"></div>
+    <div id="huabenDetails" class="details"></div>
+    <div id="huabenTestDetails" class="test-details"></div>
+    <div id="huabenStatistics" class="statistics"></div>
+
+    <script>
+        function updateStatus(elementId, message, isSuccess) {
+            const element = document.getElementById(elementId);
+            element.className = 'status ' + (isSuccess ? 'success' : 'error');
+            element.textContent = message;
+        }
+
+        function updateDetails(elementId, details) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = details;
+        }
+
+        function formatDate(date) {
+            return date.toLocaleString('zh-CN', { 
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit',
+                fractionalSecondDigits: 3
+            });
+        }
+
+        function formatNumber(num, decimals = 1) {
+            return Number(num).toFixed(decimals);
+        }
+
+        function checkNetworkStatus() {
+            return navigator.onLine;
+        }
+
+        // 网络质量测试
+        async function testNetworkQuality() {
+            const testCount = 10;
+            const results = [];
+            const startTime = new Date();
+            let successCount = 0;
+            let totalLatency = 0;
+            let minLatency = Infinity;
+            let maxLatency = 0;
+            const testDetails = [];
+
+            for (let i = 0; i < testCount; i++) {
+                const testStart = performance.now();
+                const testTime = new Date();
+                try {
+                    const response = await fetch('https://www.ihuaben.com?' + Date.now(), {
+                        mode: 'no-cors',
+                        cache: 'no-cache'
+                    });
+                    const testEnd = performance.now();
+                    successCount++;
+                    const latency = testEnd - testStart;
+                    totalLatency += latency;
+                    minLatency = Math.min(minLatency, latency);
+                    maxLatency = Math.max(maxLatency, latency);
+                    
+                    testDetails.push({
+                        time: testTime,
+                        success: true,
+                        latency: latency,
+                        attempt: i + 1
+                    });
+                    
+                    results.push({
+                        success: true,
+                        latency: latency
+                    });
+                } catch (error) {
+                    testDetails.push({
+                        time: testTime,
+                        success: false,
+                        error: error.message,
+                        attempt: i + 1
+                    });
+                    
+                    results.push({
+                        success: false,
+                        error: error.message
+                    });
+                }
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            const endTime = new Date();
+            const totalDuration = endTime - startTime;
+            const packetLoss = ((testCount - successCount) / testCount) * 100;
+            const avgLatency = successCount > 0 ? totalLatency / successCount : 0;
+            const jitter = calculateJitter(results.filter(r => r.success).map(r => r.latency));
+
+            // 更新测试详情显示
+            const detailsHtml = testDetails.map(detail => {
+                if (detail.success) {
+                    return `<div class="test-item test-success">
+                        #${detail.attempt} - 成功 [${formatDate(detail.time)}] 
+                        延迟: ${formatNumber(detail.latency)}ms
+                    </div>`;
+                } else {
+                    return `<div class="test-item test-error">
+                        #${detail.attempt} - 失败 [${formatDate(detail.time)}] 
+                        错误: ${detail.error}
+                    </div>`;
+                }
+            }).join('');
+            
+            document.getElementById('huabenTestDetails').innerHTML = `
+                <strong>详细测试记录：</strong><br>${detailsHtml}`;
+
+            // 更新统计数据
+            document.getElementById('huabenStatistics').innerHTML = `
+                <strong>话本小说网站访问统计：</strong><br>
+                - 测试时间范围：${formatDate(startTime)} 至 ${formatDate(endTime)}<br>
+                - 总测试时长：${formatNumber(totalDuration / 1000, 2)}秒<br>
+                - 总请求次数：${testCount}次<br>
+                - 成功请求：${successCount}次<br>
+                - 失败请求：${testCount - successCount}次<br>
+                - 丢包率：${formatNumber(packetLoss)}%<br>
+                - 平均延迟：${formatNumber(avgLatency)}ms<br>
+                - 最小延迟：${successCount ? formatNumber(minLatency) : 'N/A'}ms<br>
+                - 最大延迟：${successCount ? formatNumber(maxLatency) : 'N/A'}ms<br>
+                - 延迟波动：${formatNumber(jitter)}ms<br>
+                - 网络评级：${getNetworkRating(packetLoss, avgLatency, jitter)}<br>
+            `;
+
+            return {
+                packetLoss,
+                avgLatency,
+                successCount,
+                testCount,
+                minLatency,
+                maxLatency,
+                jitter
+            };
+        }
+
+        function calculateJitter(latencies) {
+            if (latencies.length < 2) return 0;
+            let totalJitter = 0;
+            for (let i = 1; i < latencies.length; i++) {
+                totalJitter += Math.abs(latencies[i] - latencies[i-1]);
+            }
+            return totalJitter / (latencies.length - 1);
+        }
+
+        function getNetworkRating(packetLoss, avgLatency, jitter) {
+            if (packetLoss <= 1 && avgLatency < 100 && jitter < 30) {
+                return '极佳 (适合流畅阅读)';
+            } else if (packetLoss <= 5 && avgLatency < 300 && jitter < 50) {
+                return '良好 (基本不影响阅读)';
+            } else if (packetLoss <= 15 && avgLatency < 500 && jitter < 100) {
+                return '一般 (可能偶尔卡顿)';
+            } else if (packetLoss <= 30 && avgLatency < 1000 && jitter < 200) {
+                return '较差 (经常卡顿)';
+            } else {
+                return '糟糕 (难以正常阅读)';
+            }
+        }
+
+        async function checkNetwork() {
+            document.getElementById('loading').style.display = 'block';
+            const startTime = new Date();
+            
+            if (checkNetworkStatus()) {
+                updateStatus('networkStatus', '网络连接正常！', true);
+                const details = `
+                    <strong>检测详情：</strong><br>
+                    - 检测时间：${formatDate(startTime)}<br>
+                    - 网络类型：${navigator.connection ? navigator.connection.effectiveType : '未知'}<br>
+                    - 在线状态：${navigator.onLine ? '在线' : '离线'}<br>
+                    - 浏览器：${navigator.userAgent}<br>
+                `;
+                updateDetails('networkDetails', details);
+                
+                // 进行网络质量测试
+                await testNetworkQuality();
+                
+                // 网络正常后立即检测话本小说网站
+                checkHuaben();
+            } else {
+                updateStatus('networkStatus', '网络连接失败！请检查您的网络设置。', false);
+                updateDetails('networkDetails', `
+                    <strong>检测详情：</strong><br>
+                    - 检测时间：${formatDate(startTime)}<br>
+                    - 网络状态：离线<br>
+                    - 浏览器：${navigator.userAgent}<br>
+                `);
+                document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        async function checkHuaben() {
+            const startTime = new Date();
+            try {
+                const timestamp = new Date().getTime();
+                const url = 'https://www.ihuaben.com?' + timestamp;
+                const response = await fetch(url, {
+                    mode: 'no-cors',
+                    cache: 'no-cache'
+                });
+                const endTime = new Date();
+                const duration = endTime - startTime;
+                
+                updateStatus('huabenStatus', '话本小说网站可以访问！', true);
+                updateDetails('huabenDetails', `
+                    <strong>访问详情：</strong><br>
+                    - 访问时间：${formatDate(startTime)}<br>
+                    - 响应时间：${duration}ms<br>
+                    - 访问URL：${url}<br>
+                    - 请求模式：no-cors<br>
+                    - 缓存策略：no-cache<br>
+                `);
+            } catch (error) {
+                const endTime = new Date();
+                const duration = endTime - startTime;
+                
+                updateStatus('huabenStatus', '无法访问话本小说网站！请检查网络设置或联系客服。', false);
+                updateDetails('huabenDetails', `
+                    <strong>错误详情：</strong><br>
+                    - 访问时间：${formatDate(startTime)}<br>
+                    - 响应时间：${duration}ms<br>
+                    - 访问URL：https://www.ihuaben.com<br>
+                    - 错误信息：${error.message}<br>
+                    - 错误类型：${error.name}<br>
+                `);
+            }
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        // 监听网络状态变化
+        window.addEventListener('online', function() {
+            const time = new Date();
+            updateStatus('networkStatus', '网络已连接！', true);
+            updateDetails('networkDetails', `
+                <strong>网络恢复详情：</strong><br>
+                - 恢复时间：${formatDate(time)}<br>
+                - 网络类型：${navigator.connection ? navigator.connection.effectiveType : '未知'}<br>
+            `);
+            // 网络恢复时重新进行完整测试
+            testNetworkQuality().then(() => checkHuaben());
+        });
+
+        window.addEventListener('offline', function() {
+            const time = new Date();
+            updateStatus('networkStatus', '网络已断开！', false);
+            updateDetails('networkDetails', `
+                <strong>网络断开详情：</strong><br>
+                - 断开时间：${formatDate(time)}<br>
+            `);
+            updateStatus('huabenStatus', '无法检测话本小说网站！', false);
+            updateDetails('huabenDetails', `
+                <strong>检测中断：</strong><br>
+                - 中断时间：${formatDate(time)}<br>
+                - 原因：网络已断开<br>
+            `);
+            // 清空网络质量显示
+            document.getElementById('networkQuality').innerHTML = '';
+            document.getElementById('huabenTestDetails').innerHTML = '';
+            document.getElementById('huabenStatistics').innerHTML = '';
+        });
+
+        // 页面加载完成后自动开始检测
+        window.onload = checkNetwork;
+    </script>
+</body>
+</html>
